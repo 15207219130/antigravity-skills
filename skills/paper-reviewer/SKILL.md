@@ -62,6 +62,17 @@ Read the entire `main.tex` from start to finish. Take notes on:
 - Are there grammar errors or awkward phrasings?
 - Is tense used consistently (present for methods, past for results)?
 
+#### G. Narrative and Structure (CRITICAL — most common weakness)
+- **Section openings**: Does every major section open with a contextual review (2-3 sentences linking back to the paper's story)?
+- **Section closings**: Does every section end with a forward-looking bridge to the next?
+- **Inter-subsection transitions**: Are subsections connected with explicit transitional sentences (not just ending one and starting another)?
+- **Equation motivation**: Is every equation preceded by text explaining WHY it is needed?
+- **Equation interpretation**: Is every equation followed by text explaining WHAT it means?
+- **Equation chains**: Do equations build on each other in a logical progression, or are they presented as an isolated catalogue?
+- **Design choice motivation**: For every parameter/choice in the methodology, is there a "why" explanation, not just a "what"?
+- **Result interpretation**: For every numerical result, is there an explanation of what it means and why it matters?
+- **Story arc**: Does the paper read as a continuous narrative (problem → approach → validation → insight), or as disconnected sections?
+
 ### 3. Produce Feedback Report
 
 Write structured feedback to `<project>/paper/.pipeline/review_feedback.md`:
