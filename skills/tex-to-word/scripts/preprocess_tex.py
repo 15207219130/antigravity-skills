@@ -138,6 +138,53 @@ def inline_bibliography(text, tex_dir):
     return '\n'.join(out_lines)
 
 
+def convert_figures_to_png(text):
+    """将 \\includegraphics 中的 .pdf 路径替换为 .png"""
+    count = 0
+    def replacer(m):
+        nonlocal count
+        count += 1
+        return m.group(0).replace('.pdf', '.png')
+    text = re.sub(r'\\includegraphics\[.*?\]\{.*?\.pdf\}', replacer, text)
+    print(f'  {count} 个 \\includegraphics .pdf → .png')
+    return text
+
+
+def replace_tikz_with_images(text, tex_dir):
+    """将 tikzpicture 环境替换为 \\includegraphics 指向提取的 PNG"""
+    figures_dir = os.path.join(tex_dir, 'figures')
+
+    # 找出 figures/ 下所有 tikz_*.png
+    tikz_pngs = []
+    if os.path.exists(figures_dir):
+        tikz_pngs = sorted([f for f in os.listdir(figures_dir) if f.startswith('tikz_') and f.endswith('.png')])
+
+    if not tikz_pngs:
+        print('  无 TikZ PNG 文件，跳过')
+        return text
+
+    # 按顺序替换 tikzpicture 环境
+    tikz_pattern = re.compile(r'\\begin\{tikzpicture\}.*?\\end\{tikzpicture\}', re.DOTALL)
+    matches = list(tikz_pattern.finditer(text))
+
+    if len(matches) != len(tikz_pngs):
+        print(f'  警告: {len(matches)} 个 TikZ 但 {len(tikz_pngs)} 个 PNG，按顺序匹配')
+
+    count = 0
+    for i, m in enumerate(matches):
+        if i < len(tikz_pngs):
+            png_name = tikz_pngs[i]
+            replacement = f'\\includegraphics[width=0.85\\textwidth]{{figures/{png_name}}}'
+            text = text[:m.start()] + replacement + text[m.end():]
+            # 更新后续 match 的位置（因为文本长度变了）
+            offset = len(replacement) - (m.end() - m.start())
+            matches = list(tikz_pattern.finditer(text))  # 重新搜索
+            count += 1
+
+    print(f'  {count} 个 TikZ → \\includegraphics PNG')
+    return text
+
+
 def preprocess(tex_path, aux_path=None):
     if aux_path is None:
         aux_path = os.path.join(os.path.dirname(tex_path), 'main.aux')
@@ -146,17 +193,21 @@ def preprocess(tex_path, aux_path=None):
     with open(tex_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    print('[1/6] 解析 .aux 标签...')
+    print('[1/8] 解析 .aux 标签...')
     labels = parse_aux_labels(aux_path)
-    print('[2/6] 替换交叉引用...')
+    print('[2/8] 替换交叉引用...')
     text = resolve_refs(text, labels)
-    print('[3/6] 公式编号...')
+    print('[3/8] 公式编号...')
     text = convert_equations(text)
-    print('[4/6] 移除斜体...')
+    print('[4/8] 移除斜体...')
     text = remove_italics(text)
-    print('[5/6] 英文术语 → 中文...')
+    print('[5/8] 英文术语 → 中文...')
     text = translate_academic_terms(text)
-    print('[6/6] 内联参考文献 (.bbl)...')
+    print('[6/8] PDF 图片 → PNG...')
+    text = convert_figures_to_png(text)
+    print('[7/8] TikZ → PNG 图片...')
+    text = replace_tikz_with_images(text, tex_dir)
+    print('[8/8] 内联参考文献 (.bbl)...')
     text = inline_bibliography(text, tex_dir)
 
     out = tex_path.replace('.tex', '_prepped.tex')
