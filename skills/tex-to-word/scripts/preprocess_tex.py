@@ -130,22 +130,66 @@ def translate_academic_terms(text):
     return text
 
 
+def inline_bibliography(text, tex_dir):
+    """
+    将 .bbl 文件的内容内联到 .tex 中，替换 \\bibliographystyle 和 \\bibliography 命令。
+    这样 pandoc 能直接处理参考文献列表，无需外部工具。
+    
+    前提：必须先用 bibtex 编译过，生成 .bbl 文件。
+    """
+    # 找到 .bbl 文件
+    bbl_path = os.path.join(tex_dir, 'main.bbl')
+    if not os.path.exists(bbl_path):
+        # 尝试其他名字
+        for f in os.listdir(tex_dir):
+            if f.endswith('.bbl'):
+                bbl_path = os.path.join(tex_dir, f)
+                break
+
+    if not os.path.exists(bbl_path):
+        print('  警告: 未找到 .bbl 文件，跳过参考文献内联')
+        return text
+
+    with open(bbl_path, 'r', encoding='utf-8', errors='ignore') as f:
+        bbl_content = f.read()
+
+    print(f'  读取 {os.path.basename(bbl_path)} ({len(bbl_content)} 字符)')
+
+    # 删除 \bibliographystyle{...}
+    text = re.sub(r'\\bibliographystyle\{[^}]*\}\s*', '', text)
+
+    # 将 \bibliography{...} 替换为 .bbl 的内容
+    if '\\bibliography{' in text:
+        text = re.sub(r'\\bibliography\{[^}]*\}', bbl_content, text)
+        print('  已将 \\bibliography{} 替换为 .bbl 内容')
+    else:
+        # 如果没有 \bibliography 命令，在 \end{document} 前插入
+        text = text.replace('\\end{document}', bbl_content + '\n\\end{document}')
+        print('  已在 \\end{document} 前插入 .bbl 内容')
+
+    return text
+
+
 def preprocess(tex_path, aux_path=None):
     if aux_path is None:
         aux_path = os.path.join(os.path.dirname(tex_path), 'main.aux')
+    tex_dir = os.path.dirname(os.path.abspath(tex_path))
+
     with open(tex_path, 'r', encoding='utf-8') as f:
         text = f.read()
 
-    print('[1/5] 解析 .aux 标签...')
+    print('[1/6] 解析 .aux 标签...')
     labels = parse_aux_labels(aux_path)
-    print('[2/5] 替换交叉引用...')
+    print('[2/6] 替换交叉引用...')
     text = resolve_refs(text, labels)
-    print('[3/5] 公式编号...')
+    print('[3/6] 公式编号...')
     text = convert_equations(text)
-    print('[4/5] 移除斜体...')
+    print('[4/6] 移除斜体...')
     text = remove_italics(text)
-    print('[5/5] 英文术语 → 中文...')
+    print('[5/6] 英文术语 → 中文...')
     text = translate_academic_terms(text)
+    print('[6/6] 内联参考文献 (.bbl)...')
+    text = inline_bibliography(text, tex_dir)
 
     out = tex_path.replace('.tex', '_prepped.tex')
     with open(out, 'w', encoding='utf-8') as f:

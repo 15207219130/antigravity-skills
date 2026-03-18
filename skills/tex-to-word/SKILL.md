@@ -61,13 +61,14 @@ python scripts/preprocess_tex.py main_merged.tex main.aux
 ```
 
 > [!IMPORTANT]
-> **必须先用 xelatex 编译过 main.tex** 生成 `.aux` 文件，否则交叉引用无法解析。
+> **必须先用 xelatex + bibtex 编译过 main.tex** 生成 `.aux` 和 `.bbl` 文件，否则交叉引用和参考文献无法解析。
 
-预处理做了四件事：
+预处理做了五件事：
 1. **解析 `\ref{}`**：从 `.aux` 文件读取 label→编号映射，替换为实际数字
 2. **公式编号**：`\begin{equation}...\end{equation}` → `$$ math $$` + 下一行 `EQNUM(N)`
 3. **去斜体**：移除 `\textit{}`、`\emph{}`，在定理环境中添加 `\upshape`
-4. **英文术语翻译**：将 Proof→证明, Proposition→命题, Theorem→定理, Lemma→引理, Corollary→推论, Definition→定义, Remark→注, Assumption→假设, Figure→图, Table→表 等独立出现的英文学术术语替换为对应中文（使用词边界匹配避免误替换）
+4. **英文术语翻译**：Proof→证明, Proposition→命题 等
+5. **参考文献内联**：读取 `.bbl` 文件，将 `\bibliography{}` 替换为已格式化的参考文献列表，确保 Word 中有完整的文献引用
 
 ### Step 3: Pandoc 转换
 
