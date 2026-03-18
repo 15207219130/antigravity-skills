@@ -1,14 +1,12 @@
 """
-preprocess_tex.py — LaTeX 预处理 v3
-  1. \\ref{} → 实际编号数字（从 .aux 解析）
-  2. equation → $$ display math $$ + 下一行 EQNUM(N)
-  3. 移除 \\textit / \\emph 斜体
-
-策略：$$ 让 pandoc 生成居中的 OMML 段落，EQNUM(N) 单独成段，
-postprocess 再把编号合并回公式段落并右对齐。
+preprocess_tex.py — LaTeX 预处理 v4
+  1. \ref{} → 实际编号（从 .aux）
+  2. equation → $$ + EQNUM(N)
+  3. 去斜体
+  4. 英文术语 → 中文
+  5. 内联 .bbl 参考文献
 
 用法: python preprocess_tex.py main_merged.tex [main.aux]
-输出: main_merged_prepped.tex
 """
 import re
 import sys
@@ -42,27 +40,13 @@ def resolve_refs(text, labels):
 
 
 def convert_equations(text):
-    """
-    \\begin{equation}...\\end{equation}
-    →
-    $$ math $$
-
-    EQNUM(N)
-
-    EQNUM(N) 独占一个段落（空行分隔），postprocess 会合并回上方公式段落。
-    """
     eq_counter = [0]
-
     def replacer(m):
         eq_counter[0] += 1
         body = m.group(1)
         body = re.sub(r'\\label\{[^}]+\}', '', body).strip()
         body = re.sub(r'\\boxed\{([^}]*)\}', r'\1', body)
-        num = eq_counter[0]
-        # $$ 前后的空行保证 pandoc 将其作为 display math 段落
-        # EQNUM 单独一行，会成为一个单独的文本段落
-        return f'\n\n$${body}$$\n\nEQNUM({num})\n\n'
-
+        return f'\n\n$${body}$$\n\nEQNUM({eq_counter[0]})\n\n'
     text = re.sub(
         r'\\begin\{equation\}(.*?)\\end\{equation\}',
         replacer, text, flags=re.DOTALL
@@ -81,46 +65,26 @@ def remove_italics(text):
     return text
 
 
-# ============================================================
-# 英文学术术语 → 中文翻译
-# ============================================================
 TERM_MAP = {
-    # 环境名/标签（pandoc 会输出这些英文名）
-    'Proof':        '证明',
-    'proof':        '证明',
-    'Proposition':  '命题',
-    'proposition':  '命题',
-    'Theorem':      '定理',
-    'theorem':      '定理',
-    'Lemma':        '引理',
-    'lemma':        '引理',
-    'Corollary':    '推论',
-    'corollary':    '推论',
-    'Definition':   '定义',
-    'definition':   '定义',
-    'Remark':       '注',
-    'remark':       '注',
-    'Assumption':   '假设',
-    'assumption':   '假设',
-    'Property':     '性质',
-    'property':     '性质',
-    'Example':      '例',
-    'example':      '例',
-    'Algorithm':    '算法',
-    'Figure':       '图',
-    'Table':        '表',
+    'Proof': '证明', 'proof': '证明',
+    'Proposition': '命题', 'proposition': '命题',
+    'Theorem': '定理', 'theorem': '定理',
+    'Lemma': '引理', 'lemma': '引理',
+    'Corollary': '推论', 'corollary': '推论',
+    'Definition': '定义', 'definition': '定义',
+    'Remark': '注', 'remark': '注',
+    'Assumption': '假设', 'assumption': '假设',
+    'Property': '性质', 'property': '性质',
+    'Example': '例', 'example': '例',
+    'Algorithm': '算法',
+    'Figure': '图',
+    'Table': '表',
 }
 
 
 def translate_academic_terms(text):
-    """
-    将 pandoc 输出中残留的英文学术术语替换为中文。
-    使用词边界匹配避免误替换（如 'Table' 不会匹配 'Tablecloth'）。
-    仅替换独立出现的术语（前后为空格、标点或行首行尾）。
-    """
     count = 0
     for en, zh in TERM_MAP.items():
-        # 匹配独立单词：前后是非字母字符或行首行尾
         pattern = rf'(?<![a-zA-Z]){re.escape(en)}(?![a-zA-Z])'
         matches = len(re.findall(pattern, text))
         if matches > 0:
@@ -131,43 +95,47 @@ def translate_academic_terms(text):
 
 
 def inline_bibliography(text, tex_dir):
-    """
-    将 .bbl 文件的内容内联到 .tex 中，替换 \\bibliographystyle 和 \\bibliography 命令。
-    这样 pandoc 能直接处理参考文献列表，无需外部工具。
-    
-    前提：必须先用 bibtex 编译过，生成 .bbl 文件。
-    """
-    # 找到 .bbl 文件
+    """读取 .bbl 文件，替换 bibliography 相关命令为实际内容"""
+    # 找 .bbl 文件
     bbl_path = os.path.join(tex_dir, 'main.bbl')
     if not os.path.exists(bbl_path):
-        # 尝试其他名字
-        for f in os.listdir(tex_dir):
-            if f.endswith('.bbl'):
-                bbl_path = os.path.join(tex_dir, f)
+        for fname in os.listdir(tex_dir):
+            if fname.endswith('.bbl'):
+                bbl_path = os.path.join(tex_dir, fname)
                 break
-
     if not os.path.exists(bbl_path):
-        print('  警告: 未找到 .bbl 文件，跳过参考文献内联')
+        print('  警告: 未找到 .bbl 文件')
         return text
 
     with open(bbl_path, 'r', encoding='utf-8', errors='ignore') as f:
-        bbl_content = f.read()
+        bbl = f.read()
+    print(f'  读取 {os.path.basename(bbl_path)} ({len(bbl)} 字符)')
 
-    print(f'  读取 {os.path.basename(bbl_path)} ({len(bbl_content)} 字符)')
+    # 逐行处理，删除 \bibliographystyle 行，替换 \bibliography 行
+    out_lines = []
+    replaced = False
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('\\bibliographystyle'):
+            continue  # 跳过
+        elif stripped.startswith('\\bibliography{'):
+            out_lines.append(bbl)  # 替换为 .bbl 内容
+            replaced = True
+            print('  已替换 \\bibliography{} 为 .bbl 内容')
+        else:
+            out_lines.append(line)
 
-    # 删除 \bibliographystyle{...}
-    text = re.sub(r'\\bibliographystyle\{[^}]*\}\s*', '', text)
+    if not replaced:
+        # 在 \end{document} 前插入
+        final = []
+        for line in out_lines:
+            if line.strip() == '\\end{document}':
+                final.append(bbl)
+            final.append(line)
+        out_lines = final
+        print('  已在 \\end{document} 前插入 .bbl')
 
-    # 将 \bibliography{...} 替换为 .bbl 的内容
-    if '\\bibliography{' in text:
-        text = re.sub(r'\\bibliography\{[^}]*\}', bbl_content, text)
-        print('  已将 \\bibliography{} 替换为 .bbl 内容')
-    else:
-        # 如果没有 \bibliography 命令，在 \end{document} 前插入
-        text = text.replace('\\end{document}', bbl_content + '\n\\end{document}')
-        print('  已在 \\end{document} 前插入 .bbl 内容')
-
-    return text
+    return '\n'.join(out_lines)
 
 
 def preprocess(tex_path, aux_path=None):
