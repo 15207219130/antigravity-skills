@@ -163,25 +163,23 @@ def replace_tikz_with_images(text, tex_dir):
         print('  无 TikZ PNG 文件，跳过')
         return text
 
-    # 按顺序替换 tikzpicture 环境
+    # 找到所有 tikzpicture 环境
     tikz_pattern = re.compile(r'\\begin\{tikzpicture\}.*?\\end\{tikzpicture\}', re.DOTALL)
     matches = list(tikz_pattern.finditer(text))
 
+    n = min(len(matches), len(tikz_pngs))
     if len(matches) != len(tikz_pngs):
-        print(f'  警告: {len(matches)} 个 TikZ 但 {len(tikz_pngs)} 个 PNG，按顺序匹配')
+        print(f'  警告: {len(matches)} 个 TikZ 但 {len(tikz_pngs)} 个 PNG')
 
-    count = 0
-    for i, m in enumerate(matches):
-        if i < len(tikz_pngs):
-            png_name = tikz_pngs[i]
-            replacement = f'\\includegraphics[width=0.85\\textwidth]{{figures/{png_name}}}'
-            text = text[:m.start()] + replacement + text[m.end():]
-            # 更新后续 match 的位置（因为文本长度变了）
-            offset = len(replacement) - (m.end() - m.start())
-            matches = list(tikz_pattern.finditer(text))  # 重新搜索
-            count += 1
+    # 从后往前替换，避免位置偏移
+    for i in range(n - 1, -1, -1):
+        m = matches[i]
+        png_name = tikz_pngs[i]
+        replacement = f'\\includegraphics[width=0.85\\textwidth]{{figures/{png_name}}}'
+        text = text[:m.start()] + replacement + text[m.end():]
+        print(f'  ✓ TikZ #{i+1} → {png_name}')
 
-    print(f'  {count} 个 TikZ → \\includegraphics PNG')
+    print(f'  共 {n} 个 TikZ → \\includegraphics PNG')
     return text
 
 
