@@ -35,8 +35,9 @@ Define a consistent notation table and save to `<project>/paper/.pipeline/notati
 # Notation Table
 | Symbol | Description | Domain/Units |
 |--------|-------------|-------------|
-| $\bm{\gamma}$ | Yaw angle vector | $\mathbb{R}^{N_t}$, degrees |
-| $N_t$ | Number of turbines | $\mathbb{Z}^+$ |
+| $\mathbf{x}$ | Decision variable vector | $\mathbb{R}^{d}$ |
+| $f(\mathbf{x})$ | Objective function | $\mathbb{R}$ |
+| $\mathcal{X}$ | Feasible region | subset of $\mathbb{R}^d$ |
 ...
 ```
 
@@ -94,8 +95,9 @@ Equation 1. Equation 2. Equation 3. Equation 4.
 ```
 
 Use transitional sentences between equations:
-- *"Having defined the wake deficit, a natural next question is how yaw misalignment deflects the wake laterally."*
-- *"The preceding formulation assumes known hyperparameters. In practice, these must be estimated from data, which leads to the marginal likelihood framework presented below."*
+- *"Having defined the cost function, a natural next question is how to handle the coupling between decision variables."*
+- *"The preceding formulation assumes known parameters. In practice, these must be estimated from data, which leads to the estimation framework presented below."*
+- *"Equations~\eqref{eq:a} and~\eqref{eq:b} together define the surrogate model. The remaining challenge is how to select the next query point — the subject of the next subsection."*
 
 ### 6. Claim Strength Ladder
 
@@ -140,39 +142,54 @@ Use transitional sentences between equations:
 - [ ] Is the limit regime stated? (e.g., "as $T \to \infty$", "as $B \to \infty$")
 - [ ] Are constants that are "absorbed" into $\mathcal{O}$ actually bounded? (kernel-dependent constants must be stated)
 
-#### E. Regret & Information Gain (for GP/bandit settings)
-- [ ] Cumulative regret → simple regret: use "$\min \leq \text{average}$", NOT Jensen's inequality
-- [ ] $\gamma_T$ growth rate: cite the correct rate for the specific kernel (Matérn-$\nu$, SE, etc.)
-- [ ] Multi-fidelity regret: are cross-fidelity terms properly accounted for?
-- [ ] Is the effective sample size correctly defined when mixing fidelities?
+#### E. Convergence & Regret Analysis
+- [ ] Convergence claims: are all required conditions (compactness, Lipschitz continuity, bounded variance, etc.) verified?
+- [ ] Convergence rate: is the cited rate for the correct problem class? (e.g., convex vs. strongly convex vs. non-convex)
+- [ ] Cumulative → simple regret: use "$\min \leq \text{average}$", NOT Jensen's inequality
+- [ ] Sample complexity: are the constants problem-dependent? Are they stated?
+- [ ] For bandit/sequential settings: is the regret definition (Bayesian vs. frequentist, simple vs. cumulative) consistent throughout?
 
-#### F. Kernel & GP Properties
-- [ ] Kernel parameters described in the paper: do they match the actual implementation? (e.g., BoTorch `DownsamplingKernel` vs. simple scalar $\rho$)
-- [ ] **If using a simplified model for analysis (e.g., $k_\text{fid}(0,1)=\rho$), state explicitly that it is a simplification for analytical clarity**
-- [ ] Posterior variance update formula: conditional on current fitted hyperparameters? State this explicitly
-- [ ] Noise variance: is $\sigma_n^2$ the observation noise or the kernel noise? Be consistent
+#### F. Model–Implementation Alignment
+- [ ] Does every equation in the paper correspond to actual code? Are there discrepancies?
+- [ ] If the paper uses a simplified model for analysis but the code uses a more complex variant, is this explicitly stated?
+- [ ] Are hyperparameters/parameters described in the paper consistent with the actual software defaults?
+- [ ] For iterative algorithms: are closed-form update rules exact or approximate? (e.g., conditional on current fitted parameters?) State this explicitly
 
 ### 8. Common Mathematical Pitfalls — MUST AVOID
 
 > **Read this section BEFORE writing any derivation. Each pitfall below has caused real errors in past drafts.**
 
-1. **Jensen's inequality direction.** $\mathbb{E}[\varphi(X)] \geq \varphi(\mathbb{E}[X])$ for **convex** $\varphi$. The inequality **reverses** for concave functions. Misapplying this is the #1 error in regret bound derivations.
+#### Inequalities & Bounds
 
-2. **Mutual information ≠ variance reduction (in general).** For a GP at a *fixed* test location $\mathbf{z}$, the MI between $f(\mathbf{z})$ and a new observation equals $\frac{1}{2}\log(1 + \text{VR}/\sigma_n^2)$. This does NOT hold when $\mathbf{z} = \mathbf{x}^* = \arg\max f$, because $\mathbf{x}^*$ is itself a random function of $f$. If you need this relationship, use it only for fixed test points and state the limitation.
+1. **Jensen's inequality direction.** $\mathbb{E}[\varphi(X)] \geq \varphi(\mathbb{E}[X])$ for **convex** $\varphi$. The inequality **reverses** for concave functions. Misapplying this is the #1 error in bound derivations.
 
-3. **"Learned kernel parameter" vs. "empirical summary."** If the actual kernel (e.g., BoTorch's `DownsamplingKernel`) has offset+power parameterization, do NOT describe it as "a learned correlation $\rho \in (0,1)$". Instead, describe the actual kernel and introduce $\rho$ as an empirical summary statistic.
+2. **"min ≤ average" does NOT require Jensen.** The statement $\min_i a_i \leq \frac{1}{n}\sum_i a_i$ is trivially true for non-negative values. Do not invoke Jensen's inequality for this — it confuses reviewers and suggests you don't understand the distinction.
 
-4. **Approximate scaling ≠ exact proportionality.** Writing $\text{IER}_k \propto \rho_k^2 \cdot c_1/c_0$ requires proving that all other terms (spatial covariance, maximizer alignment) cancel. If they don't cancel exactly, write "under a simplified model" or "approximately scales as".
+3. **Cauchy–Schwarz requires an inner product space.** Verify the space structure before applying. For probability, this means $\mathbb{E}[XY]^2 \leq \mathbb{E}[X^2]\mathbb{E}[Y^2]$ — check that the relevant moments exist.
 
-5. **"It can be shown that" without showing it.** Never use this phrase. Either prove it, cite a reference, or downgrade to a heuristic justification.
+4. **Information inequality conditions.** Mutual information, KL divergence, and entropy have specific regularity conditions (e.g., absolute continuity for differential entropy). State these when invoking information-theoretic bounds.
 
-6. **Overstating convergence guarantees.** A "proof sketch" that hand-waves over key steps is NOT a proof. If the greedy policy's near-optimality requires adaptive submodularity and you have not verified this, say so in the text.
+#### Statistical & Probabilistic Reasoning
 
-7. **Conditioning on refitted hyperparameters.** GP posterior formulas (variance reduction, predictive mean) are exact conditional on *fixed* hyperparameters. If your algorithm refits hyperparameters at every iteration, the closed-form updates are only approximate. State: "conditional on the current fitted GP hyperparameters, the standard Gaussian conditioning formula yields..."
+5. **Interchanging expectation with optimization.** $\mathbb{E}[\max_x f(x)] \neq \max_x \mathbb{E}[f(x)]$ in general. If your derivation swaps $\mathbb{E}$ with $\max$ or $\arg\max$, you need a justification (e.g., deterministic $x$, linearity).
 
-8. **Boltzmann weighting ≠ posterior over argmax.** Defining $p(\mathbf{x}^* \mid \mathcal{D}) \propto \exp(\mu(\mathbf{x})/T)$ is a *surrogate distribution* for weighting promising regions. The true posterior over $\arg\max f$ is intractable. Do NOT call the Boltzmann weighting "the posterior distribution of the optimizer" — call it "a Boltzmann-type surrogate distribution that concentrates mass on promising regions".
+6. **Surrogate distributions ≠ true posteriors.** If you define a weighting (e.g., Boltzmann weighting, importance sampling weights) to concentrate mass on promising regions, do NOT call it "the posterior distribution." Call it what it is: a surrogate or auxiliary distribution.
 
-9. **ρ_k monotone decline is not guaranteed.** The empirical cross-fidelity correlation may or may not decrease as exploration progresses. Do NOT state "$\rho_k$ declines toward the noise floor" as a theoretical certainty. Instead: "in our experiments, the effective cross-fidelity coupling becomes less favorable for low-fidelity screening in later iterations, consistent with the intuition that easy-to-transfer uncertainty is exhausted first."
+7. **Conditioning on fitted parameters.** Many closed-form update rules (posterior variance, predictive mean, Fisher information) are exact only conditional on *fixed* parameters. If your algorithm refits parameters at every iteration, these are approximations. State this explicitly.
+
+8. **Empirical trends ≠ theoretical guarantees.** Do NOT state "X always increases/decreases" if you only have experimental evidence. Write: "In our experiments, we observe that X tends to..."
+
+#### Modeling & Formulation
+
+9. **Approximate scaling ≠ exact proportionality.** Writing $A \propto B$ requires proving that all other terms cancel or are constant. If they don't, write "under a simplified model" or "approximately scales as."
+
+10. **Simplified analysis models vs. actual implementations.** If the paper analyzes a simplified version of the model (e.g., scalar correlation instead of a full kernel, linear approximation instead of nonlinear) but the code uses the full version, state the simplification explicitly and discuss when it is a good approximation.
+
+11. **Overstating convergence guarantees.** A "proof sketch" that hand-waves over key steps is NOT a proof. If near-optimality requires conditions you have not verified (e.g., submodularity, bounded RKHS norm, Slater's condition), say so.
+
+#### Presentation
+
+12. **"It can be shown that" without showing it.** Never use this phrase. Either prove it, cite a specific reference (with theorem number), or downgrade to a heuristic justification.
 
 ### 9. Discuss Assumptions and Limitations
 
@@ -211,5 +228,5 @@ Write to `<project>/paper/.pipeline/math_model.tex`:
 - [ ] **Statistical Rigor Checklist (§7) passed for EVERY probabilistic derivation**
 - [ ] **Common Pitfalls (§8) reviewed — no violations**
 - [ ] **Every formal statement classified per Claim Strength Ladder (§6) — no overstatement**
-- [ ] **Kernel/model descriptions match the actual software implementation**
-- [ ] **All conditioning assumptions (fitted hyperparameters, surrogate distributions) explicitly stated**
+- [ ] **Model descriptions match the actual software implementation (§7F)**
+- [ ] **All conditioning assumptions (fitted parameters, surrogate distributions) explicitly stated**
