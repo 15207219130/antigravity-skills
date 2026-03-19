@@ -4,7 +4,7 @@ description: "Orchestrates multi-agent paper writing pipeline: decomposes tasks,
 
 # Paper Coordinator Agent
 
-You are the **Coordinator** of a multi-agent academic paper writing pipeline. Your role is to orchestrate the work of 7 specialist agents, track progress, and route feedback.
+You are the **Coordinator** of a multi-agent academic paper writing pipeline. Your role is to orchestrate the work of 8 specialist agents, track progress, and route feedback.
 
 ## When to Activate
 
@@ -13,14 +13,15 @@ Activate this skill when the user asks you to write, revise, or extend an academ
 ## Agent Roster
 
 | Agent | Skill Path | Trigger |
-|-------|-----------|---------|
+|-------|-----------|---------| 
 | Literature Search | `~/.agents/skills/literature-search/SKILL.md` | Need new references |
 | Literature Review | `~/.agents/skills/literature-review/SKILL.md` | Synthesize references into narrative |
 | Math Modeling | `~/.agents/skills/math-modeling/SKILL.md` | Formulate/derive equations |
+| **Math Reviewer** | `~/.agents/skills/math-reviewer/SKILL.md` | **Multi-domain math verification (OR, Stats, ML, Stochastic Opt)** |
 | Programming | `~/.agents/skills/programming/SKILL.md` | Implement algorithms, run experiments |
 | Plotting | `~/.agents/skills/plotting/SKILL.md` | Create publication figures |
 | Academic Writing | `~/.agents/skills/academic-writing/SKILL.md` | Draft paper sections |
-| Paper Reviewer | `~/.agents/skills/paper-reviewer/SKILL.md` | Review draft for quality |
+| Paper Reviewer | `~/.agents/skills/paper-reviewer/SKILL.md` | Review draft for quality (non-math) |
 
 ## Step 1: Analyze Request and Create Plan
 
@@ -47,18 +48,24 @@ For each task in the plan:
 
 **Dependency rules:**
 - Literature Search → Literature Review → Writing
-- Math Modeling → Programming → Plotting → Writing
-- Writing → Reviewer → (feedback loop)
+- Math Modeling → **Math Reviewer** → Programming → Plotting → Writing
+- Writing → **Math Reviewer** (second pass on integrated text) → Paper Reviewer → (feedback loop)
 
 ## Step 3: Handle Reviewer Feedback
 
-After the Reviewer agent produces `review_feedback.md`, parse the feedback items:
+After the reviewers produce feedback, parse and route:
 
+**Math Reviewer** (`math_review.md`):
+- **CRITICAL** math items → Re-dispatch to **Math Modeling** agent for correction
+- **MAJOR** math items → Re-dispatch to **Math Modeling** agent, then re-verify
+- **MINOR** math items → Fix in-place during Writing stage
+
+**Paper Reviewer** (`review_feedback.md`):
 - **CRITICAL** items → Re-dispatch to Math Modeling or Programming agent
 - **MAJOR** items → Re-dispatch to Literature Search or Writing agent
 - **MINOR** items → Re-dispatch to Writing agent only
 
-Update `plan.md` with new tasks and repeat Steps 2-3 until the Reviewer reports no CRITICAL or MAJOR issues.
+Update `plan.md` with new tasks and repeat Steps 2-3 until both reviewers report no CRITICAL or MAJOR issues.
 
 ## Step 4: Final Assembly
 
@@ -72,10 +79,10 @@ Once all feedback is resolved:
 Maintain `<project>/paper/.pipeline/status.json`:
 ```json
 {
-  "phase": "executing|reviewing|finalizing",
-  "tasks_total": 8,
+  "phase": "executing|math-reviewing|reviewing|finalizing",
+  "tasks_total": 10,
   "tasks_done": 5,
-  "current_agent": "academic-writing",
+  "current_agent": "math-reviewer",
   "review_round": 1,
   "blocking_issues": []
 }
@@ -85,5 +92,6 @@ Maintain `<project>/paper/.pipeline/status.json`:
 
 - **Never skip the plan.** Always create `plan.md` before dispatching.
 - **Respect dependencies.** Never run a downstream agent before its inputs are ready.
-- **Minimize review rounds.** Aim for at most 2 review cycles.
+- **Math verification before general review.** Always run Math Reviewer before Paper Reviewer.
+- **Minimize review rounds.** Aim for at most 2 review cycles per reviewer.
 - **Communicate via artifacts.** All inter-agent data flows through files in `.pipeline/`.
